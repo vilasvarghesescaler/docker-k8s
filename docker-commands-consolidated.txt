@@ -9,7 +9,7 @@
 		publish/port-forward  container port to host port 
 	docker ps
 		display running containers
-	doccker stop <id>
+	docker stop <id>
 		gracefully stop a container
 	docker ps -a
 		display stopped and running containers 
@@ -64,7 +64,7 @@ Vilas : Attach tries to attach to process 1 where as exec executes a new process
 	search for a image in the repository - e.g. dockerhub 
 
 5. docker pull ubuntu
-	pull image 
+	pull image 	
 
 6. docker images
 	docker inspect image

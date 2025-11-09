@@ -1,7 +1,11 @@
 format_version: 3
 
 pipelines:
+<<<<<<< HEAD
   gocd-project:
+=======
+  my_maven_project:
+>>>>>>> fd155900106fc95d8541c80b180e5105ca66d4dc
     group: java_applications # Organize your pipelines into groups
 
     materials: # Define where your source code comes from
@@ -32,7 +36,12 @@ pipelines:
                 # This makes it available for subsequent stages or for download
                 - exec:
                     command: echo
+<<<<<<< HEAD
                     arguments: "Publishing build artifacts..."
+=======
+                    arguments: 
+                      - "Publishing build artifacts..."
+>>>>>>> fd155900106fc95d8541c80b180e5105ca66d4dc
                   artifact_paths:
                     - target/*.jar # Adjust if it's a WAR or different packaging
                     - target/*.war
@@ -60,7 +69,12 @@ pipelines:
                 # Optional: Publish test reports (e.g., Surefire/Failsafe reports)
                 - exec:
                     command: echo
+<<<<<<< HEAD
                     arguments: "Publishing test reports..."
+=======
+                    arguments: 
+                      - "Publishing test reports..."
+>>>>>>> fd155900106fc95d8541c80b180e5105ca66d4dc
                   artifact_paths:
                     - "target/surefire-reports/**/*" # Standard Maven Surefire reports
                     - "target/failsafe-reports/**/*" # Standard Maven Failsafe reports

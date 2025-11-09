@@ -240,7 +240,7 @@ Another example would be to have any cli as entrypoint. For instance, if you hav
 		Usage:
 		    EXPOSE <port> [<port> ...]
 
-		    - Informs Docker container.
+		    - Informs Docker runtime.
 			- does not make PORT accessible.
 		At runtime you can decide the network plugin.
 		
