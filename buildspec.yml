@@ -3,58 +3,71 @@ version: 0.2
 env:
   variables:
     AWS_REGION: "us-east-1"
-    AWS_ACCOUNT_ID: ""          # <-- set this in CodeBuild project environment variables
-    ECR_REPO_NAME: "docker-k8s" # or set in CodeBuild env
-    IMAGE_TAG: "latest"         # or set to a commit-based tag
+    AWS_ACCOUNT_ID: ""          # set inside CodeBuild console
+    ECR_REPO_NAME: "docker-k8s"
+    IMAGE_TAG: "latest"
+
 phases:
   install:
     runtime-versions:
       java: corretto17
     commands:
-      - echo "Install phase: check tools"
+      - echo "Install phase: validating tools"
       - echo "AWS CLI version: $(aws --version 2>&1 || true)"
+
+      # Install kubectl if missing
       - |
         if ! command -v kubectl >/dev/null 2>&1; then
-          echo "kubectl not found, installing..."
-          KUBECTL_VERSION=$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)
-          curl -sLO "https://storage.googleapis.com/kubernetes-release/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          echo "Installing kubectl..."
+          KVER=$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)
+          curl -sLO https://storage.googleapis.com/kubernetes-release/release/${KVER}/bin/linux/amd64/kubectl
           chmod +x kubectl
           mv kubectl /usr/local/bin/
-        else
-          echo "kubectl present: $(kubectl version --client --short)"
         fi
+
+      - kubectl version --client --short || true
       - docker --version || true
       - mvn -version || true
 
   pre_build:
     commands:
       - echo "Logging in to ECR..."
-      - aws --version
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-      - echo "Ensure ECR repository exists..."
-      - aws ecr describe-repositories --repository-names $ECR_REPO_NAME --region $AWS_REGION || aws ecr create-repository --repository-name $ECR_REPO_NAME --region $AWS_REGION
+      - aws ecr get-login-password --region "$AWS_REGION" \
+          | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      - echo "Ensuring ECR repo exists..."
+      - aws ecr describe-repositories --repository-names "$ECR_REPO_NAME" --region "$AWS_REGION" \
+          || aws ecr create-repository --repository-name "$ECR_REPO_NAME" --region "$AWS_REGION"
+
       - echo "Running Maven package..."
       - mvn -B clean package -DskipTests
 
   build:
     commands:
       - echo "Building Docker image..."
-      - IMAGE_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}
-      - docker build -t ${ECR_REPO_NAME}:${IMAGE_TAG} .
-      - docker tag ${ECR_REPO_NAME}:${IMAGE_TAG} ${IMAGE_URI}
+      - export IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}"
+      - echo "IMAGE_URI=${IMAGE_URI}"
+      - docker build -t "${ECR_REPO_NAME}:${IMAGE_TAG}" .
+      - docker tag "${ECR_REPO_NAME}:${IMAGE_TAG}" "${IMAGE_URI}"
 
   post_build:
     commands:
-      - echo "Pushing image to ECR: ${IMAGE_URI}"
-      - docker push ${IMAGE_URI}
-      - echo "Preparing kubeconfig via aws eks update-kubeconfig..."
-      - aws eks update-kubeconfig --region $AWS_REGION --name <YOUR_EKS_CLUSTER_NAME>
-      - echo "Substituting image placeholder in YAML..."
+      - echo "Pushing image to: ${IMAGE_URI}"
+      - docker push "${IMAGE_URI}"
+
+      - echo "Setting up kubeconfig..."
+      - aws eks update-kubeconfig --region "$AWS_REGION" --name "<YOUR_EKS_CLUSTER_NAME>"
+
+      - echo "Updating YAML image..."
       - sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_URI}|g" yaml/deployment.yaml
+
       - echo "Applying manifests..."
       - kubectl apply -f yaml/deployment.yaml
+
       - echo "Waiting for rollout..."
-      - kubectl rollout status deployment/docker-k8s-app --timeout=120s || (kubectl get pods -o wide && exit 1)
+      - kubectl rollout status deployment/docker-k8s-app --timeout=120s \
+          || (kubectl get pods -o wide && exit 1)
+
 artifacts:
   files:
     - target/*.jar
