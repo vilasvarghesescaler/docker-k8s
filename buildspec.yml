@@ -3,48 +3,97 @@ version: 0.2
 env:
   variables:
     AWS_REGION: "us-east-1"
-    AWS_ACCOUNT_ID: ""          # set inside CodeBuild environment variables
     ECR_REPO_NAME: "docker-k8s"
     IMAGE_TAG: "latest"
+    EKS_CLUSTER_NAME: "YOUR_EKS_CLUSTER_NAME"   # <-- CHANGE THIS
+
+  parameter-store:
+    AWS_ACCOUNT_ID: "/myapp/aws/account_id"     # optional (you may remove)
 
 phases:
   install:
-    runtime-versions:
-      java: corretto17
     commands:
-      - echo "Install phase: validating tools"
-      - echo "AWS CLI version: $(aws --version 2>&1 || true)"
+      - echo "===== INSTALL PHASE (Ubuntu) ====="
+      - echo "Updating apt index..."
+      - apt-get update -y
 
+      # Install docker CLI if not present
       - |
-        # install kubectl if missing
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "Installing Docker..."
+          apt-get install -y docker.io
+        fi
+
+      # Install Maven if not present
+      - |
+        if ! command -v mvn >/dev/null 2>&1; then
+          echo "Installing Maven..."
+          apt-get install -y maven
+        fi
+
+      # Install kubectl
+      - |
         if ! command -v kubectl >/dev/null 2>&1; then
           echo "Installing kubectl..."
-          KVER=$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)
-          curl -sLO https://storage.googleapis.com/kubernetes-release/release/${KVER}/bin/linux/amd64/kubectl
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
           chmod +x kubectl
           mv kubectl /usr/local/bin/
         fi
 
-      - kubectl version --client --short || true
-      - docker --version || true
-      - mvn -version || true
+      - echo "Tool versions:"
+      - docker --version
+      - mvn -version
+      - kubectl version --client --short
 
   pre_build:
     commands:
-      - echo "Logging in to ECR..."
-      - aws ecr get-login-password --region "$AWS_REGION" | \
-          docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      - echo "===== PRE-BUILD PHASE ====="
 
-      - echo "Ensuring ECR repo exists..."
-      - aws ecr describe-repositories --repository-names "$ECR_REPO_NAME" \
-          --region "$AWS_REGION" || \
-          aws ecr create-repository --repository-name "$ECR_REPO_NAME" --region "$AWS_REGION"
+      # Login to ECR
+      - echo "Logging into ECR..."
+      - aws ecr get-login-password --region "$AWS_REGION" \
+          | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
-      - echo "Running Maven package..."
+      # Ensure ECR repo exists
+      - echo "Checking ECR repository..."
+      - aws ecr describe-repositories --repository-names "$ECR_REPO_NAME" --region "$AWS_REGION" \
+          || aws ecr create-repository --repository-name "$ECR_REPO_NAME" --region "$AWS_REGION"
+
+      - echo "Running Maven Package..."
       - mvn -B clean package -DskipTests
 
   build:
     commands:
-      - echo "Building Docker image..."
-      - export IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}"
-      - echo "IMAGE_URI=${IMAGE_U
+      - echo "===== BUILD DOCKER IMAGE ====="
+      - export IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$IMAGE_TAG"
+      - echo "IMAGE_URI=$IMAGE_URI"
+
+      - docker build -t "$ECR_REPO_NAME:$IMAGE_TAG" .
+      - docker tag "$ECR_REPO_NAME:$IMAGE_TAG" "$IMAGE_URI"
+
+  post_build:
+    commands:
+      - echo "===== PUSH & DEPLOY ====="
+
+      # Push image
+      - docker push "$IMAGE_URI"
+
+      # Setup kubeconfig
+      - echo "Configuring kubectl..."
+      - aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+
+      # Update YAML image tag
+      - echo "Updating deployment YAML..."
+      - sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_URI}|g" yaml/deployment.yaml
+
+      # Apply manifests
+      - echo "Applying Kubernetes manifests..."
+      - kubectl apply -f yaml/deployment.yaml
+
+      - echo "Waiting for rollout..."
+      - kubectl rollout status deployment/docker-k8s-app --timeout=180s \
+        || (echo "Rollout failed. Printing pods..."; kubectl get pods -o wide; exit 1)
+
+artifacts:
+  files:
+    - target/*.jar
