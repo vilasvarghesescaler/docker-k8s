@@ -7,8 +7,8 @@ env:
     IMAGE_TAG: "latest"
     EKS_CLUSTER_NAME: "YOUR_EKS_CLUSTER_NAME"   # <-- CHANGE THIS
 
-  parameter-store:
-    AWS_ACCOUNT_ID: "396982710430"     # optional (you may remove)
+#  parameter-store:
+#    AWS_ACCOUNT_ID: "396982710430"     # optional (you may remove)
 
 phases:
   install:
