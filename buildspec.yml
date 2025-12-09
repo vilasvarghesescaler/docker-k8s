@@ -8,7 +8,7 @@ env:
     EKS_CLUSTER_NAME: "YOUR_EKS_CLUSTER_NAME"   # <-- CHANGE THIS
 
   parameter-store:
-    AWS_ACCOUNT_ID: "/myapp/aws/account_id"     # optional (you may remove)
+    AWS_ACCOUNT_ID: "396982710430"     # optional (you may remove)
 
 phases:
   install:
