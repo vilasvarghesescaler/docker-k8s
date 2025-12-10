@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM public.ecr.aws/ubuntu/ubuntu:latest
 RUN apt-get -y update && apt-get -y upgrade
 RUN apt-get -y install openjdk-8-jdk wget
 RUN mkdir /usr/local/tomcat
@@ -8,4 +8,5 @@ RUN cp -Rv /tmp/apache-tomcat-9.0.113/* /usr/local/tomcat/
 COPY target/HelloWorld-0.0.1-SNAPSHOT.war /usr/local/tomcat/webapps/
 EXPOSE 8080
 CMD /usr/local/tomcat/bin/catalina.sh run
+
 
