@@ -71,22 +71,6 @@ phases:
       # Push image
       - docker push "$IMAGE_URI"
 
-      # Setup kubeconfig
-      - echo "Configuring kubectl..."
-      - aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
-
-      # Update YAML image tag
-      - echo "Updating deployment YAML..."
-      - sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_URI}|g" yaml/deployment.yaml
-
-      # Apply manifests
-      - echo "Applying Kubernetes manifests..."
-      - kubectl apply -f yaml/deployment.yaml
-
-      - echo "Waiting for rollout..."
-      - kubectl rollout status deployment/docker-k8s-app --timeout=180s \
-        || (echo "Rollout failed. Printing pods..."; kubectl get pods -o wide; exit 1)
-
 artifacts:
   files:
     - target/*.jar
