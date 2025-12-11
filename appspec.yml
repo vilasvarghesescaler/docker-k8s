@@ -1,0 +1,8 @@
+version: 0.0
+Resources:
+  - myNginxDeployment:
+      Type: "Kubernetes::Deployment"
+      Properties:
+        Name: "nginx-deployment"
+        Namespace: "default"
+        File: "deploy-tomcat.yaml"
