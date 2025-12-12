@@ -1,8 +1,17 @@
 version: 0.0
-Resources:
-  - myNginxDeployment:
-      Type: "Kubernetes::Deployment"
-      Properties:
-        Name: "nginx-deployment"
-        Namespace: "default"
-        File: "deploy-tomcat.yaml"
+os: linux
+
+files:
+  - source: /
+    destination: /opt/codedeploy/
+
+hooks:
+  BeforeInstall:
+    - location: scripts/before_install.sh
+      timeout: 300
+      runas: root
+
+  ApplicationStart:
+    - location: scripts/deploy.sh
+      timeout: 300
+      runas: root
