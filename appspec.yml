@@ -1,9 +1,9 @@
 version: 0.0
 os: linux
 
-files:
-  - source: k8s/
-    destination: /opt/k8s/
+#files:
+#  - source: k8s/
+#    destination: /opt/k8s/
 
 hooks:
   BeforeInstall:
