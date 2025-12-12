@@ -2,16 +2,16 @@ version: 0.0
 os: linux
 
 files:
-  - source: /
-    destination: /opt/codedeploy/
+  - source: k8s/
+    destination: /opt/k8s/
 
 hooks:
   BeforeInstall:
-    - location: scripts/before_install.sh
-      timeout: 300
+    - location: scripts/cleanup.sh
+      timeout: 180
       runas: root
 
-  ApplicationStart:
-    - location: scripts/deploy.sh
+  AfterInstall:
+    - location: scripts/apply_manifests.sh
       timeout: 300
       runas: root
