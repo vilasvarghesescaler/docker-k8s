@@ -1,4 +1,4 @@
-name: Maven CI with Security and Docker
+name: CI execution
 
 on:
   push:
