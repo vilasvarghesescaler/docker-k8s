@@ -86,7 +86,24 @@ jobs:
         docker build -t vilasvarghese/test:latest .
 
     # ----------------------------------------------------
-    # 9. Docker Container Basic Testing
+    # 9. Trivy – Container Image Security Scan
+    # ----------------------------------------------------
+    - name: Run Trivy vulnerability scan
+      uses: aquasecurity/trivy-action@0.24.0
+      with:
+        image-ref: vilasvarghese/test:latest
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '1'
+
+    - name: Upload Trivy scan results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: trivy-results.sarif
+
+    # ----------------------------------------------------
+    # 10. Docker Container Basic Testing
     # ----------------------------------------------------
     - name: Run container and test
       run: |
@@ -98,7 +115,7 @@ jobs:
         docker rm test-app
 
     # ----------------------------------------------------
-    # 10. Login to DockerHub
+    # 11. Login to DockerHub
     # ----------------------------------------------------
     - name: Login to DockerHub
       uses: docker/login-action@v3
@@ -107,7 +124,7 @@ jobs:
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     # ----------------------------------------------------
-    # 11. Push Docker Image
+    # 12. Push Docker Image
     # ----------------------------------------------------
     - name: Push Image to DockerHub
       run: |
