@@ -10,6 +10,95 @@ https://www.youtube.com/watch?v=1mNYSn2KMZk
 
 
 
+### Introduction to Kubernetes Admission Controllers
+
+This tutorial covers **Kubernetes Admission Controllers**, the gatekeepers of the Kubernetes API. Based on the *"Cloud With VarJosh"* course, this guide explains how they function, the difference between mutating and validating controllers, and how to manage them.
+
+---
+
+## 1. Introduction to Admission Controllers
+Admission Controllers are pieces of code that intercept requests to the Kubernetes API server **after** the request is authenticated and authorized, but **before** the object is persisted in **etcd**.
+
+They serve two primary purposes:
+* **Enforce Policies:** Ensuring resources adhere to organizational standards (e.g., "no public images allowed").
+* **Modify Requests:** Automatically injecting sidecars or default labels into incoming resource manifests.
+
+> **Note:** Admission controllers only apply to **write operations** (Create, Update, Patch, Delete). They do not trigger for read operations like `get` or `list`.
+
+---
+
+## 2. Types of Admission Controllers
+Kubernetes categorizes these controllers based on their behavior:
+
+### A. Mutating Admission Controllers
+These controllers can **modify** the request object.
+* **Example:** The `DefaultStorageClass` controller automatically adds a storage class name to a PersistentVolumeClaim (PVC) if the user left it blank.
+
+### B. Validating Admission Controllers
+These controllers can only **allow or deny** a request; they cannot modify it.
+* **Example:** Imagine your company has a security policy that only allows container images from your private, scanned corporate registry (e.g., `mycorp.azurecr.io`).
+    * **The Request:** A developer tries to run a pod using `image: nginx:latest`.
+    * **The Action:** The Validating Admission Controller inspects the `image` field and sees it doesn't match the required registry.
+    * **The Result:** The controller **denies** the request. The developer receives an error: *"Internal Policy: Images from public Docker Hub are prohibited."*
+
+### C. Dual-Function Controllers
+Some plugins do both.
+* **Example:** `LimitRanger` acts as **mutating** by injecting default CPU/Memory requests if missing, and as **validating** by rejecting requests that exceed maximum allowed limits.
+
+---
+
+## 3. Built-in vs. Custom Controllers
+* **Built-in:** Compiled into the `kube-apiserver` binary (e.g., `NodeRestriction`, `ResourceQuota`).
+* **Custom (Webhooks):** External services that the API server calls via HTTP. Popular tools like **OPA (Open Policy Agent) Gatekeeper** and **Kyverno** are implemented this way.
+
+---
+
+## 4. The Admission Control Sequence
+When a request hits the API server, it follows a strict order:
+
+
+
+1.  **Authentication & Authorization:** Verifies who you are and if you have permission.
+2.  **Mutating Phase:** All mutating controllers run. If a request is modified, the change is kept in memory.
+3.  **Object Validation:** Built-in schema validation occurs.
+4.  **Validating Phase:** All validating controllers run. If **any** controller denies the request, the entire operation fails immediately.
+5.  **Persistence:** If everything passes, the object is saved to **etcd**.
+
+---
+
+## 5. Hands-on: Enabling and Disabling Plugins
+In a `kubeadm` deployment, admission controllers are configured via flags in the `kube-apiserver` static pod manifest.
+
+### How to Check/Modify:
+1.  Access your control plane node.
+2.  Open the manifest file: `/etc/kubernetes/manifests/kube-apiserver.yaml`.
+3.  **To Enable:** Add the plugin to the `--enable-admission-plugins` flag.
+4.  **To Disable:** Use the `--disable-admission-plugins` flag.
+
+### Demo Example: Disabling ServiceAccount
+If you disable the `ServiceAccount` plugin, Kubernetes will stop automatically mounting the default service account token into your pods.
+* **Before disabling:** `kubectl describe pod` shows a mount for the service account token.
+* **After disabling:** New pods will have **no** service account information or token mounts.
+
+---
+
+## 6. Key Built-in Plugins to Know
+* **NodeRestriction:** Limits a kubelet's ability to modify only its own Node and Pod objects—a critical security feature.
+* **AlwaysPullImages:** Modifies every pod's image pull policy to `Always`. This ensures users cannot "steal" images already cached on a node without credentials.
+* **ResourceQuota:** Ensures that a namespace does not exceed its allocated hardware resources.
+
+---
+
+## 7. Summary of the Flow
+
+| Phase | Action | Result |
+| :--- | :--- | :--- |
+| **Mutating** | Modify/Defaulting | Changes the YAML in memory |
+| **Validating** | Approval/Rejection | Allows or Blocks the request |
+| **etcd** | Storage | Resource is created in the cluster |
+
+---
+
 
 
 
