@@ -83,7 +83,7 @@ jobs:
 
     - name: Build Docker Image
       run: |
-        docker build -t vilasvarghese/test:latest .
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/test:latest .
 
     # ----------------------------------------------------
     # 9. Trivy – Container Image Security Scan
@@ -91,7 +91,7 @@ jobs:
     - name: Run Trivy vulnerability scan
       uses: aquasecurity/trivy-action@0.24.0
       with:
-        image-ref: vilasvarghese/test:latest
+        image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/test:latest
         format: 'sarif'
         output: 'trivy-results.sarif'
         severity: 'CRITICAL,HIGH'
@@ -107,7 +107,7 @@ jobs:
     # ----------------------------------------------------
     - name: Run container and test
       run: |
-        docker run -d -p 8080:8080 --name test-app vilasvarghese/test:latest
+        docker run -d -p 8080:8080 --name test-app ${{ secrets.DOCKERHUB_USERNAME }}/test:latest
         sleep 10
         curl -f http://localhost:8080 || exit 1
         docker logs test-app
