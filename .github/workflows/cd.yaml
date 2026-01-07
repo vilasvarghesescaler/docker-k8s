@@ -1,4 +1,4 @@
-name: Build a WAR file using Maven
+name: Scaler demo deployment
 
 on:
   workflow_dispatch:
