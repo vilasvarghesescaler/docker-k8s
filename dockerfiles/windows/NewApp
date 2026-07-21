@@ -1,0 +1,72 @@
+mkdir test
+cd test
+vi Program.cs
+
+using System.Runtime.InteropServices;
+
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+app.MapGet("/", () => new 
+{
+    Message = "Hello from Microsoft MCR Base Image on Linux!",
+    Framework = RuntimeInformation.FrameworkDescription,
+    OS = RuntimeInformation.OSDescription,
+    Architecture = RuntimeInformation.OSArchitecture.ToString(),
+    Timestamp = DateTime.UtcNow
+});
+
+app.Run();
+
+
+
+vi App.csproj
+
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>
+
+
+
+vi Dockerfile
+
+# Stage 1: Build environment
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Copy project files and restore dependencies
+COPY App.csproj ./
+RUN dotnet restore
+
+# Copy remaining code and publish optimized release build
+COPY Program.cs ./
+RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
+
+# Stage 2: Minimal runtime environment
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+
+# Copy output from build stage
+COPY --from=build /app/publish .
+
+# Modern .NET MCR images run on port 8080 by default and use a non-root user
+EXPOSE 8080
+
+ENTRYPOINT ["dotnet", "App.dll"]
+
+
+
+Commands
+
+# 1. Build the Docker image using MCR base images
+docker build -t mcr-demo-app .
+
+# 2. Run the container on your Linux host (mapping host port 8000 to container port 8080)
+docker run -d -p 8000:8080 --name my-app mcr-demo-app
+
+# 3. Test the application
+curl http://localhost:8000
