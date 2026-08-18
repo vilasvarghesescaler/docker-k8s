@@ -1,0 +1,286 @@
+
+1. Install kubernetes
+    1. Refer my repo.
+2. Install helm
+3. Install keda 
+    1. helm repo add kedacore https://kedacore.github.io/charts
+    2. helm repo update
+    3. helm install keda kedacore/keda --namespace keda --create-namespace
+    4. watch -n 1 kubectl get pods -n keda
+    5. kubectl get crd | grep keda
+4. Create a deployment
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management
+          ports:
+            - containerPort: 5672
+              name: amqp
+            - containerPort: 15672
+              name: management
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: "guest"
+            - name: RABBITMQ_DEFAULT_PASS
+              value: "guest"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: default
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+    - name: management
+      port: 15672
+      targetPort: 15672
+
+
+
+Consumer 
+
+consumer.py
+
+
+import pika
+import time
+import os
+
+rabbitmq_host = os.environ.get("RABBITMQ_HOST", "rabbitmq")
+queue_name = os.environ.get("QUEUE_NAME", "orders")
+
+connection = pika.BlockingConnection(
+    pika.ConnectionParameters(host=rabbitmq_host)
+)
+channel = connection.channel()
+channel.queue_declare(queue=queue_name, durable=True)
+
+def callback(ch, method, properties, body):
+    message = body.decode()
+    print(f"Processing order: {message}")
+    time.sleep(3)
+    print(f"Done: {message}")
+    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+channel.basic_qos(prefetch_count=1)
+channel.basic_consume(queue=queue_name, on_message_callback=callback)
+
+print("Consumer started. Waiting for messages...")
+channel.start_consuming()
+
+
+
+FROM python:3.11-slim
+WORKDIR /app
+RUN pip install pika
+COPY consumer.py .
+CMD ["python", "consumer.py"]
+
+
+docker build -t vilasvarghese/order-consumer:latest .
+docker login -u vilasvarghese
+docker push vilasvarghese/order-consumer:latest
+
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-consumer
+  namespace: default
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: order-consumer
+  template:
+    metadata:
+      labels:
+        app: order-consumer
+    spec:
+      containers:
+        - name: consumer
+          image: vilasvarghese/order-consumer:latest
+          imagePullPolicy: Never
+          env:
+            - name: RABBITMQ_HOST
+              value: "rabbitmq"
+            - name: QUEUE_NAME
+              value: "orders"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+
+Notice replicas is set to 0. No consumer pods are running yet. KEDA will start them when messages arrive in the queue.
+
+Scaled Object (Set up keda objects)
+
+
+mkdir keda
+cd keda
+
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-secret
+  namespace: default
+type: Opaque
+stringData:
+  host: "amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/"
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: rabbitmq-trigger-auth
+  namespace: default
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: rabbitmq-secret
+      key: host
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: order-consumer-scaled-object
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: order-consumer
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 5
+  cooldownPeriod: 30
+  triggers:
+    - type: rabbitmq
+      metadata:
+        queueName: orders
+        mode: QueueLength
+        value: "5"
+      authenticationRef:
+        name: rabbitmq-trigger-auth
+
+
+kubectl get scaledobject
+kubectl get pods -l app=order-consumer
+
+
+Publish message 
+
+Mkdir publisher
+Cd publisher
+
+
+publisher.py
+
+import pika
+import sys
+
+rabbitmq_host = "rabbitmq"
+queue_name = "orders"
+
+connection = pika.BlockingConnection(
+    pika.ConnectionParameters(host=rabbitmq_host)
+)
+channel = connection.channel()
+channel.queue_declare(queue=queue_name, durable=True)
+
+num_messages = int(sys.argv[1]) if len(sys.argv) > 1 else 50
+
+for i in range(1, num_messages + 1):
+    message = f"Order-{i}"
+    channel.basic_publish(
+        exchange="",
+        routing_key=queue_name,
+        body=message,
+        properties=pika.BasicProperties(delivery_mode=2),
+    )
+    print(f"Sent: {message}")
+
+connection.close()
+print(f"Published {num_messages} messages to the '{queue_name}' queue.")
+
+
+FROM python:3.11-slim
+WORKDIR /app
+RUN pip install pika
+COPY publisher.py .
+ENTRYPOINT ["python", "publisher.py"]
+CMD ["50"]
+
+
+docker build -t vilasvarghese/order-publisher:latest -f Dockerfile .
+docker push vilasvarghese/order-publisher
+cd ..
+
+
+
+
+
+
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: order-publisher
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+        - name: publisher
+          image: vilasvarghese/order-publisher:latest
+          imagePullPolicy: Never
+          args: ["50"]
+          env:
+            - name: RABBITMQ_HOST
+              value: "rabbitmq"
+      restartPolicy: Never
+  backoffLimit: 1
+
+
+kubectl apply -f demo-2-rabbitmq/publisher-job.yaml
+
+
+kubectl get pods -w
+
+
+kubectl get hpa -w
+
+kubectl describe scaledobject order-consumer-scaled-object
+
+
+kubectl get pods -w
