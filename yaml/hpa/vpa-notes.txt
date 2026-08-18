@@ -1,0 +1,53 @@
+VPA
+git clone https://github.com/kubernetes/autoscaler.git
+cd autoscaler/vertical-pod-autoscaler/
+./hack/vpa-up.sh
+
+Install metric server 
+Kubectl apply -f https://raw.githubusercontent.com/vilasvarghese/docker-k8s/refs/heads/master/yaml/metricServer/metric-server.yaml
+
+
+deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-vpa-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-vpa-demo
+  template:
+    metadata:
+      labels:
+        app: nginx-vpa-demo
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+
+
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: nginx-vpa
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: nginx-vpa-demo
+  updatePolicy:
+    updateMode: "Off" 
+# Recommends values without restarting pods
+
+
+# 1. Expose Nginx deployment as a ClusterIP service
+kubectl expose deployment nginx-vpa-demo --port=80
+
+# 2. Launch a load generator pod running continuous requests
+kubectl run -i --tty load-generator --rm --image=busybox:1.28 -- restart=Never -- /bin/sh -c "while true; do wget -q -O- http://nginx-vpa-demo; done"
