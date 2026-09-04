@@ -2,3 +2,59 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: k8s-lab
+
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-configmap-pod
+  namespace: k8s-lab
+  labels:
+    app: demo-app
+spec:
+  initContainers:
+  - name: wait-for-configmap
+    image: busybox:1.36
+    command: ['sh', '-c']
+    args:
+      - |
+        echo "Waiting for app-config file to be created..."
+        # Loop until the file exists
+        while [ ! -f /etc/config/app.properties ]; do
+          echo "ConfigMap file not found yet. Retrying in 3 seconds..."
+          sleep 3
+        done
+        echo "SUCCESS: ConfigMap found! Passing control to main container."
+    volumeMounts:
+    - name: config-volume
+      mountPath: /etc/config
+      readOnly: true
+
+  containers:
+  - name: main-app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: config-volume
+      mountPath: /etc/config
+
+  volumes:
+  - name: config-volume
+    configMap:
+      name: app-config
+      optional: true  # CRITICAL: Allows the Pod to schedule without failing if ConfigMap is missing
+
+
+#Create the below config map a little latter. until this is created the pod will remain in init state
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: k8s-lab
+data:
+  app.properties: |
+    ENVIRONMENT=production
+    LOG_LEVEL=debug
